@@ -1,0 +1,105 @@
+#Main - Meta version
+
+from __future__ import (absolute_import, unicode_literals, print_function)
+
+from sklearn import datasets, cross_validation
+from sknn.mlp import Classifier, Layer, Convolution
+from randomCoords import *
+import numpy as np
+import math
+
+
+#All-incorporating formatting
+def format(nnClf, toFit):
+    #Ask for the number of points in 1 cluster
+    goodInput = False
+    while goodInput == False:
+        try:
+            groupSize = int(input("How many points would you like to have in one cluster? "))
+            testPositive = math.sqrt(groupSize-1)
+            goodInput = True
+        except:
+            print ("Please input a valid value (numerical value larger than or equal to 1)")
+            
+    totalPtCount = len(toFit)/7 #Total number of points per structure
+    pointLabels = np.zeros([7*math.ceil(totalPtCount/groupSize),groupSize])
+    strucCounter = 0 #Number of structures we've been through
+    while strucCounter < 7:
+        count = 0 #basic counter - number of times we went through the loop
+        numGroups = 0 #Number of completed groups within a structure
+    
+        while numGroups < math.ceil(totalPtCount)/groupSize:
+            count = 0
+            while count < groupSize and count < totalPtCount - numGroups*groupSize:
+                index = strucCounter*totalPtCount + numGroups*groupSize + count
+                pointLabels[strucCounter*len(pointLabels)/7+numGroups][count] = nnClf.predict(np.array([toFit[index]]))
+                count += 1
+    
+            print("Next group!")
+            numGroups += 1
+    
+        print ("Onto the next structure!")
+        strucCounter += 1
+        
+    return pointLabels, groupSize
+
+#Training-specific formatting
+def formatTrain(nnClf, toFit):
+    trPointLabels, ptsPerGroup = format(nnClf, toFit)
+    print (trPointLabels.shape)
+    totalPtCount = len(toFit)/7 #Total number of points per structure
+        
+    #Labeling groups of points to complete the training set
+    targetVariables = np.zeros([len(trPointLabels)])
+    count = 0
+    for labelSet in trPointLabels:
+        groupLabel = math.floor(count/math.ceil((totalPtCount/ptsPerGroup)))
+        targetVariables[count] = groupLabel
+        count += 1
+        
+    return trPointLabels, targetVariables
+
+#Main
+def main():
+    
+    #Generate both raw training and testing data
+    rawTrain = genCoords()
+    rawX_train = buildTrain(rawTrain)[:,0:9]
+    rawY_train = buildTrain(rawTrain)[:,-1]
+    
+    rawTest1 = genCoords()
+    rawX_test1 = buildTest(rawTest1)[:] #Used in clf1 to make individual point predictions, which are grouped together in training group predictions
+    print (rawX_test1.shape)
+    #print (np.array(rawX_test1).shape)
+    rawTest2 = genCoords()
+    rawX_test2 = buildTest(rawTest2)[:] #Used for actual testing
+    
+    #Define and train the individual-point neural net
+    clf1 = Classifier(
+        layers=[
+            Layer("Maxout", units=100, pieces=2),
+            Layer("Softmax")],
+        learning_rate=0.001,
+        n_iter=25)
+    clf1.fit(rawX_train, rawY_train)
+    
+    #Formatting training data
+    X_train, Y_train = formatTrain(clf1, rawX_test1)
+    
+    #Define and train the main neural net
+    nn = Classifier(
+        layers=[
+            Layer("Maxout", units=100, pieces=2),
+            Layer("Softmax")],
+        learning_rate=0.001,
+        n_iter=25)
+    nn.fit(X_train, Y_train)
+    
+    #Formatting testing data
+    X_test, ignore = format(clf1, rawX_test2) #We don't need target variables
+    
+    #Predict
+    Y_test = nn.predict(X_test)
+    print (Y_test, s)
+    
+main()
